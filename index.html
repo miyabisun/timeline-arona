@@ -1,14 +1,22 @@
 <!doctype html>
-<html lang="en">
+<html lang="ja">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <!-- Apply the stored theme before the bundle loads to avoid a flash of
+         the wrong theme. Keep the rules in sync with src/lib/theme.ts. -->
+    <script>
+      try {
+        var storedTheme = localStorage.getItem("timeline-arona:theme");
+        if (storedTheme === "dark" || storedTheme === "light") {
+          document.documentElement.dataset.theme = storedTheme;
+        }
+      } catch (error) {}
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Timeline Arona</title>
   </head>
-
   <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
