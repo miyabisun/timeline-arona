@@ -12,6 +12,9 @@ use crate::video::{self, Crop};
 const LABEL: &str = "video";
 const HELPER: &str = include_str!("video.js");
 const POLL: Duration = Duration::from_millis(200);
+/// How long ads may hold up one wait on top of its own time. Ads are played and
+/// skipped where YouTube offers it, never cut short.
+const AD_LIMIT: Duration = Duration::from_secs(15 * 60);
 
 /// Opens `url` in the video window (made the first time) and waits past any ad
 /// until the video can be read.
@@ -67,10 +70,14 @@ pub fn frames(app: &AppHandle, args: &Value) -> Result<Value, String> {
     let window = app
         .get_webview_window(LABEL)
         .ok_or("先に video_open で動画を開いてください")?;
-    let state = eval(&window, "window.__arona ? window.__arona.info() : null")?;
-    if state["ready"] != true {
-        return Err("動画がまだ読めません。video_open で開き直してください".to_owned());
-    }
+    let state = wait(
+        &window,
+        "window.__arona ? window.__arona.info() : null",
+        Duration::from_secs(60),
+        "動画が読めるようになるの",
+        |v| v["ready"] == true && v["duration"].is_number(),
+    )
+    .map_err(|e| format!("{e}。video_open で開き直してください"))?;
     let duration = state["duration"].as_f64().unwrap_or(f64::MAX);
 
     let dir = frame_dir()?;
@@ -118,7 +125,8 @@ fn frame_dir() -> Result<PathBuf, String> {
     Ok(dir)
 }
 
-/// Runs `script` until `done` holds for its result, which it returns.
+/// Runs `script` until `done` holds for its result, which it returns. Time an ad
+/// shows (`video.js` says `"ad"` or `{ad: true}`) does not count, up to `AD_LIMIT`.
 fn wait(
     window: &WebviewWindow,
     script: &str,
@@ -127,15 +135,21 @@ fn wait(
     done: impl Fn(&Value) -> bool,
 ) -> Result<Value, String> {
     let start = Instant::now();
+    let (mut counted, mut last) = (Duration::ZERO, start);
     loop {
         let value = eval(window, script)?;
         if done(&value) {
             return Ok(value);
         }
-        if start.elapsed() > timeout {
+        let now = Instant::now();
+        if value != "ad" && value["ad"] != true {
+            counted += now - last;
+        }
+        last = now;
+        if counted > timeout || start.elapsed() > timeout + AD_LIMIT {
             return Err(format!(
                 "{what}を {} 秒待ちましたが終わりません（最後の状態: {value}）",
-                timeout.as_secs()
+                start.elapsed().as_secs()
             ));
         }
         std::thread::sleep(POLL);

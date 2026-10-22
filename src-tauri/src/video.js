@@ -8,14 +8,17 @@
   const video = () => document.querySelector("video.html5-main-video") ?? document.querySelector("video");
   const ad = () => Boolean(player()?.classList.contains("ad-showing"));
 
-  /** Gets on past an ad: muted, playing, skipped as soon as it can be. */
+  /** Gets on past an ad: muted, playing, and skipped by its own button once YouTube shows one. */
   function passAd() {
     const v = video();
     if (v) {
       v.muted = true;
       if (v.paused) v.play().catch(() => {});
     }
-    document.querySelector(".ytp-skip-ad-button, .ytp-ad-skip-button-modern, .ytp-ad-skip-button")?.click();
+    const skip = [...(player()?.querySelectorAll("button") ?? [])].find(
+      (b) => /skip/i.test(b.className) && b.offsetParent !== null,
+    );
+    skip?.click();
   }
 
   /** Whether the video can be read; once it can, what the video is. */
@@ -49,15 +52,18 @@
     const v = video();
     if (!v) return false;
     wanted = time;
+    // During an ad the element plays the ad: leave it alone; `settled` seeks after.
+    if (ad()) return true;
     v.pause();
     v.currentTime = time;
     return true;
   }
 
+  /** True once the picture at the asked time is there; "ad" while an ad plays. */
   function settled() {
     if (ad()) {
       passAd();
-      return false;
+      return "ad";
     }
     const v = video();
     if (!v || v.seeking || v.readyState < 2) return false;
