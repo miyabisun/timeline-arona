@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    timeline_arona_lib::run()
+    timeline_arona_lib::run();
 }
