@@ -252,33 +252,36 @@ pub fn check(timeline: &Timeline) -> Vec<Problem> {
 }
 
 /// A student's level and the forms of the training fields; `at` names a field.
+/// Training left out is unknown (a timeline read off a video), not wrong.
 fn check_student(problems: &mut Vec<Problem>, student: &Student, at: impl Fn(&str) -> String) {
-    if !student.lv.is_some_and(|lv| (1..=90).contains(&lv)) {
+    if student.lv.is_some_and(|lv| !(1..=90).contains(&lv)) {
         problems.push(problem(at("lv"), "レベルは 1〜90 です"));
     }
-    if !STARS.contains(&student.star.as_str()) {
+    let given = |text: &str| !text.is_empty();
+    if given(&student.star) && !STARS.contains(&student.star.as_str()) {
         problems.push(problem(
             at("star"),
             format!("{} から選んでください", STARS.join("・")),
         ));
     }
-    if !is_skill_levels(&student.skill) {
+    if given(&student.skill) && !is_skill_levels(&student.skill) {
         problems.push(problem(
             at("skill"),
             "EX・NS・PS・SS の順に 4 文字（10 は M、EX は 5 まで）。例: 5M7M",
         ));
     }
-    if !student
-        .equip
-        .strip_prefix('T')
-        .is_some_and(|rest| three_numbers(rest, 10))
+    if given(&student.equip)
+        && !student
+            .equip
+            .strip_prefix('T')
+            .is_some_and(|rest| three_numbers(rest, 10))
     {
         problems.push(problem(
             at("equip"),
             "T と 3 つの段階を / で区切ります。例: T9/9/9",
         ));
     }
-    if !three_numbers(&student.wb, 25) {
+    if given(&student.wb) && !three_numbers(&student.wb, 25) {
         problems.push(problem(
             at("wb"),
             "HP・攻撃力・治癒力を / で区切ります（各 25 まで）。例: 25/25/0",
@@ -320,6 +323,12 @@ fn check_row(problems: &mut Vec<Problem>, row: &Row, names: &[&str], at: impl Fn
         }
         _ => {}
     }
+}
+
+/// `yaml` in the editor's layout (`write`), with what is wrong in it.
+pub fn tidy(yaml: &str) -> Result<(String, Vec<Problem>), String> {
+    let timeline = read(yaml)?;
+    Ok((write(&timeline), check(&timeline)))
 }
 
 /// A YAML double-quoted string (a JSON string is one).
@@ -377,22 +386,22 @@ pub fn write(timeline: &Timeline) -> String {
     lines.join("\n") + "\n"
 }
 
-/// A student's lines, indented under `striker:` or `special:`.
+/// A student's lines, indented under `striker:` or `special:`; training left out
+/// stays out.
 fn student_lines(student: &Student) -> Vec<String> {
-    let lv = student
-        .lv
-        .map_or_else(|| "null".to_owned(), |lv| lv.to_string());
-    let mut lines = vec![
-        format!("    - name: {}", quoted(&student.name)),
-        format!("      lv: {lv}"),
-    ];
+    let mut lines = vec![format!("    - name: {}", quoted(&student.name))];
+    if let Some(lv) = student.lv {
+        lines.push(format!("      lv: {lv}"));
+    }
     for (key, value) in [
         ("star", &student.star),
         ("skill", &student.skill),
         ("equip", &student.equip),
         ("wb", &student.wb),
     ] {
-        lines.push(format!("      {key}: {}", quoted(value)));
+        if !value.is_empty() {
+            lines.push(format!("      {key}: {}", quoted(value)));
+        }
     }
     lines
 }
@@ -610,6 +619,36 @@ mod tests {
             expected,
             "example-timeline.json is stale: run with UPDATE_FIXTURES=1"
         );
+    }
+
+    #[test]
+    fn training_may_be_left_out_when_unknown() {
+        let yaml = "boss: ゲブラ\ndifficulty: TORMENT\narmor: 軽装備\nterrain: 屋外\nparty:\n  striker:\n    - name: ミカ\n  special:\n    - name: ヒマリ\ntimeline:\n  - when_cost: 6\n    skill: ミカ\n";
+        let t = read(yaml).unwrap();
+        assert_eq!(check(&t), []);
+        let written = write(&t);
+        for key in ["lv:", "star:", "skill: \"\"", "equip:", "wb:"] {
+            assert!(!written.contains(key), "{key} in\n{written}");
+        }
+        assert_eq!(read(&written).unwrap(), t);
+    }
+
+    #[test]
+    fn tidy_gives_the_editor_layout_and_the_problems() {
+        let (tidied, problems) = tidy("boss: ホド\n").unwrap();
+        assert!(
+            tidied.starts_with("# メタデータ\nboss: \"ホド\"\n"),
+            "{tidied}"
+        );
+        assert_eq!(
+            fields(&problems),
+            ["difficulty", "armor", "terrain", "party"]
+        );
+        assert_eq!(
+            tidy(EXAMPLE).unwrap(),
+            (EXAMPLE.replace("\r\n", "\n"), vec![])
+        );
+        assert!(tidy("- 1").is_err());
     }
 
     #[test]

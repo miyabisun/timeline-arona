@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
-import { answer, callsOf, mockTauri } from "./tauri-mock.js";
+import { answer, callsOf, emit, mockTauri } from "./tauri-mock.js";
 
 const example = JSON.parse(
   readFileSync(new URL("./fixtures/example-timeline.json", import.meta.url), "utf8"),
@@ -187,6 +187,48 @@ test("a file that cannot be read or written says so and keeps the work", async (
   await expect(page.getByRole("alert")).toHaveText(`保存できませんでした: ${PATH}: Access is denied.`);
   await expect(page.getByText("未保存")).toBeVisible();
   await expect(page.getByLabel("ボス")).toHaveValue("ホド");
+});
+
+test("students get their SchaleDB face and names to choose from", async ({ page }) => {
+  await start(page);
+  await page.getByRole("button", { name: "STRIKERを追加" }).click();
+  const striker = page.getByRole("table", { name: "STRIKER" }).locator("tbody tr").first();
+  const choices = page.locator("#names-striker option");
+  await expect(choices.first()).toBeAttached();
+  const names = await choices.evaluateAll((options) => options.map((o) => o.value));
+  expect(names).toContain("ホシノ（臨戦）");
+  expect(names).not.toContain("ヒマリ"); // a SPECIAL
+  expect(await page.locator("#names-special option").evaluateAll((o) => o.map((x) => x.value))).toContain("ヒマリ");
+
+  await expect(striker.locator(".face img")).toHaveCount(0);
+  await page.getByLabel("STRIKER 1 人目の名前").fill("ホシノ（臨戦）");
+  const face = striker.locator(".face img");
+  await expect(face).toHaveAttribute("src", "/schaledb/students/10098.webp");
+  await expect.poll(() => face.evaluate((img) => img.naturalWidth)).toBeGreaterThan(0);
+  await page.getByLabel("STRIKER 1 人目の名前").fill("カジコ");
+  await expect(face).toHaveCount(0);
+
+  await page.getByLabel("STRIKER 1 人目の名前").fill("ホシノ（臨戦）");
+  await page.getByRole("button", { name: "行を追加" }).click();
+  await page.getByLabel("1 行目の生徒").selectOption("ホシノ（臨戦）");
+  const row = page.getByRole("table", { name: "タイムライン" }).locator("tbody tr").first();
+  await expect(row.locator(".face img")).toHaveAttribute("src", "/schaledb/students/10098.webp");
+});
+
+test("a file the MCP server sends opens without a dialog", async ({ page }) => {
+  // Sent before the window was up.
+  await start(page, { take_open: { ok: PATH }, open_timeline: { ok: { timeline: example, problems: [] } } });
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("hod-insane.yaml");
+  expect((await callsOf(page, "open_timeline")).at(-1).args).toEqual({ path: PATH });
+
+  // Sent while it is up, with unsaved work: asked first.
+  await page.getByLabel("ボス").fill("ゴズ");
+  await answer(page, "plugin:dialog|message", { ok: "破棄する" });
+  const other = "C:/Users/sensei/geburah.yaml";
+  await emit(page, "open", other);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("geburah.yaml");
+  expect(await callsOf(page, "plugin:dialog|message")).toHaveLength(1);
+  expect(await callsOf(page, "plugin:dialog|open")).toHaveLength(0);
 });
 
 test("the menu offers the file actions and the theme", async ({ page }) => {

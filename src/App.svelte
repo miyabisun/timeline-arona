@@ -1,5 +1,6 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
+  import { listen } from "@tauri-apps/api/event";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { ask, open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
   import { onMount } from "svelte";
@@ -7,6 +8,7 @@
   import Header from "./lib/Header.svelte";
   import PartyTable from "./lib/PartyTable.svelte";
   import TimelineTable from "./lib/TimelineTable.svelte";
+  import { loadRoster, type Roster } from "./lib/students";
   import {
     ARMORS,
     DIFFICULTIES,
@@ -25,6 +27,7 @@
   let saved = $state(JSON.stringify(emptyTimeline()));
   let problems = $state<Problem[]>([]);
   let failure = $state<string | null>(null);
+  let roster = $state<Roster>([]);
 
   const dirty = $derived(JSON.stringify(doc) !== saved);
   const students = $derived(
@@ -49,11 +52,18 @@
   });
 
   onMount(() => {
+    loadRoster().then((loaded) => (roster = loaded));
     const unlisten = getCurrentWindow().onCloseRequested(async (event) => {
       if (!(await mayDiscard())) event.preventDefault();
     });
+    // A file sent by the MCP server (timeline_open): before this window was up, or since.
+    const unlistenOpen = listen<string>("open", (event) => openPath(event.payload));
+    invoke<string | null>("take_open").then((sent) => {
+      if (sent) openPath(sent);
+    });
     return () => {
       unlisten.then((stop) => stop());
+      unlistenOpen.then((stop) => stop());
     };
   });
 
@@ -81,12 +91,19 @@
   async function openFile() {
     if (!(await mayDiscard())) return;
     const chosen = await openDialog({ filters: FILTERS });
-    if (typeof chosen !== "string") return;
+    if (typeof chosen === "string") await read(chosen);
+  }
+
+  async function openPath(at: string) {
+    if (await mayDiscard()) await read(at);
+  }
+
+  async function read(at: string) {
     try {
       const opened = await invoke<{ timeline: Timeline; problems: Problem[] }>("open_timeline", {
-        path: chosen,
+        path: at,
       });
-      load(opened.timeline, chosen);
+      load(opened.timeline, at);
       problems = opened.problems;
     } catch (error) {
       failure = `開けませんでした: ${error}`;
@@ -189,14 +206,14 @@
     <h2 id="party">編成</h2>
     {#each messagesFor(problems, "party") as message (message)}<p class="field-error">{message}</p>{/each}
     <h3>STRIKER</h3>
-    <PartyTable group="striker" label="STRIKER" bind:students={doc.party.striker} {problems} />
+    <PartyTable group="striker" label="STRIKER" bind:students={doc.party.striker} {problems} {roster} />
     <h3>SPECIAL</h3>
-    <PartyTable group="special" label="SPECIAL" bind:students={doc.party.special} {problems} />
+    <PartyTable group="special" label="SPECIAL" bind:students={doc.party.special} {problems} {roster} />
   </section>
 
   <section aria-labelledby="rows">
     <h2 id="rows">タイムライン</h2>
-    <TimelineTable bind:rows={doc.timeline} {students} {problems} />
+    <TimelineTable bind:rows={doc.timeline} {students} {problems} {roster} />
   </section>
 </main>
 

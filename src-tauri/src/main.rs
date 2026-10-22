@@ -2,5 +2,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    timeline_arona_lib::run();
+    // `timeline-arona mcp` serves MCP on stdin and stdout instead of opening the editor.
+    timeline_arona_lib::run(std::env::args().nth(1).as_deref() == Some("mcp"));
 }

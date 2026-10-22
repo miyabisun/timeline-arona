@@ -1,5 +1,7 @@
 <script lang="ts">
+  import Face from "./Face.svelte";
   import Icon from "./Icon.svelte";
+  import type { Roster } from "./students";
   import {
     changeKind,
     messagesFor,
@@ -15,7 +17,8 @@
     rows = $bindable(),
     students,
     problems,
-  }: { rows: Row[]; students: string[]; problems: Problem[] } = $props();
+    roster,
+  }: { rows: Row[]; students: string[]; problems: Problem[]; roster: Roster } = $props();
 
   const messages = (i: number, key: string) => messagesFor(problems, `timeline.${i}.${key}`);
   const name = (i: number, title: string) => `${i + 1} 行目の${title}`;
@@ -48,7 +51,7 @@
         <th class="num">#</th>
         <th class="kind">種類</th>
         <th class="when">発動</th>
-        <th class="who">生徒</th>
+        <th class="student">生徒</th>
         <th class="who">対象</th>
         <th>メモ</th>
         <th class="actions"></th>
@@ -108,20 +111,23 @@
             <td colspan="2" class="follow">押すスキルなし</td>
           {:else}
             <td>
-              <select
-                class="input"
-                aria-label={name(i, "生徒")}
-                aria-invalid={messages(i, "skill").length > 0}
-                bind:value={row.skill}
-              >
-                <option value="" disabled>選ぶ</option>
-                {#if row.skill && !students.includes(row.skill)}
-                  <option value={row.skill}>{row.skill}</option>
-                {/if}
-                {#each students as student (student)}
-                  <option value={student}>{student}</option>
-                {/each}
-              </select>
+              <div class="pick">
+                <Face {roster} name={row.skill} />
+                <select
+                  class="input"
+                  aria-label={name(i, "生徒")}
+                  aria-invalid={messages(i, "skill").length > 0}
+                  bind:value={row.skill}
+                >
+                  <option value="" disabled>選ぶ</option>
+                  {#if row.skill && !students.includes(row.skill)}
+                    <option value={row.skill}>{row.skill}</option>
+                  {/if}
+                  {#each students as student (student)}
+                    <option value={student}>{student}</option>
+                  {/each}
+                </select>
+              </div>
               {#each messages(i, "skill") as message (message)}<p class="field-error">{message}</p>{/each}
             </td>
             <td>
@@ -178,8 +184,20 @@
   .when
     width: 112px
 
+  .student
+    width: 164px
+
   .who
     width: 128px
+
+  .pick
+    display: flex
+    align-items: center
+    gap: var(--sp-2)
+
+    .input
+      flex: 1
+      min-width: 7em
 
   .actions
     width: 124px

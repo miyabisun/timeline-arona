@@ -1,5 +1,7 @@
 <script lang="ts">
+  import Face from "./Face.svelte";
   import Icon from "./Icon.svelte";
+  import { namesOf, type Roster } from "./students";
   import { emptyStudent, messagesFor, STARS, type Problem, type Student } from "./timeline";
 
   let {
@@ -7,11 +9,13 @@
     label,
     students = $bindable(),
     problems,
+    roster,
   }: {
     group: "striker" | "special";
     label: string;
     students: Student[];
     problems: Problem[];
+    roster: Roster;
   } = $props();
 
   type TextKey = "name" | "skill" | "equip" | "wb";
@@ -30,6 +34,12 @@
   }
 </script>
 
+<datalist id="names-{group}">
+  {#each namesOf(roster, group) as candidate (candidate)}
+    <option value={candidate}></option>
+  {/each}
+</datalist>
+
 <div class="table-scroll">
   <table aria-label={label}>
     <thead>
@@ -47,13 +57,17 @@
       {#each students as student, i (i)}
         <tr>
           <td>
-            <input
-              class="input"
-              aria-label={name(i, "名前")}
-              aria-invalid={messages(i, "name").length > 0}
-              placeholder="シロコ"
-              bind:value={student.name}
-            />
+            <div class="who">
+              <Face {roster} name={student.name} />
+              <input
+                class="input"
+                list="names-{group}"
+                aria-label={name(i, "名前")}
+                aria-invalid={messages(i, "name").length > 0}
+                placeholder="シロコ"
+                bind:value={student.name}
+              />
+            </div>
             {#each messages(i, "name") as message (message)}<p class="field-error">{message}</p>{/each}
           </td>
           <td>
@@ -114,6 +128,16 @@
 </button>
 
 <style lang="sass">
+  .who
+    display: flex
+    align-items: center
+    gap: var(--sp-2)
+
+    // A narrow window scrolls the table rather than squeezing the name.
+    .input
+      flex: 1
+      min-width: 8em
+
   .narrow
     width: 64px
 
