@@ -1,6 +1,6 @@
 [package]
 name = "timeline-arona"
-version = "0.1.1"
+version = "0.1.2"
 description = "Blue Archive boss battle timeline YAML editor"
 authors = ["miyabi"]
 edition = "2024"
